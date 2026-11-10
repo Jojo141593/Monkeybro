@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "runId": "courtyard-night-20261108-r3",
+  "captures": [
+    {
+      "mode": "desktop",
+      "state": "courtyard",
+      "report": "artifacts/courtyard-night-20261108-r3/desktop-courtyard.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "unlit",
+      "report": "artifacts/courtyard-night-20261108-r3/desktop-unlit.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "chest-open",
+      "report": "artifacts/courtyard-night-20261108-r3/desktop-chest-open.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "courtyard",
+      "report": "artifacts/courtyard-night-20261108-r3/mobile-courtyard.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "unlit",
+      "report": "artifacts/courtyard-night-20261108-r3/mobile-unlit.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "chest-open",
+      "report": "artifacts/courtyard-night-20261108-r3/mobile-chest-open.json"
+    }
+  ],
+  "artifacts": [
+    "artifacts/courtyard-night-20261108-r3/chest-motion.json",
+    "artifacts/courtyard-night-20261108-r3/chest-motion-closed.png",
+    "artifacts/courtyard-night-20261108-r3/chest-motion-opening.png",
+    "artifacts/courtyard-night-20261108-r3/chest-motion-half.png",
+    "artifacts/courtyard-night-20261108-r3/chest-motion-open.png"
+  ]
+}

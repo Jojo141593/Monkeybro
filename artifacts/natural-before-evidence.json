@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "runId": "natural-orchard-20261108-before",
+  "captures": [
+    {
+      "mode": "desktop",
+      "state": "orchard",
+      "report": "artifacts/natural-orchard-20261108-before/desktop-orchard.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "courtyard",
+      "report": "artifacts/natural-orchard-20261108-before/desktop-courtyard.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "courtyard-2",
+      "report": "artifacts/natural-orchard-20261108-before/desktop-courtyard-2.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "courtyard-3",
+      "report": "artifacts/natural-orchard-20261108-before/desktop-courtyard-3.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "orchard",
+      "report": "artifacts/natural-orchard-20261108-before/mobile-orchard.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "courtyard",
+      "report": "artifacts/natural-orchard-20261108-before/mobile-courtyard.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "courtyard-2",
+      "report": "artifacts/natural-orchard-20261108-before/mobile-courtyard-2.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "courtyard-3",
+      "report": "artifacts/natural-orchard-20261108-before/mobile-courtyard-3.json"
+    }
+  ]
+}

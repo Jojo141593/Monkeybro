@@ -1,0 +1,287 @@
+{
+  "runId": "greywall-20261109-r3",
+  "method": "Real keyboard W/Q/E events; unpaused playing state, simulation stepped at 1/60s and rendered at each sample. Setup isolates a giant; no FPS claim.",
+  "errors": [],
+  "samples": [
+    {
+      "name": "walk",
+      "gameTime": 15.145400000000038,
+      "cameraHeight": 1.62,
+      "playerPosition": [
+        0,
+        0,
+        -3.1290688143907244
+      ],
+      "health": 100,
+      "enemy": {
+        "state": "patrol",
+        "position": [
+          0.778528537148928,
+          0,
+          -63.54845452405671
+        ],
+        "health": 160,
+        "armRotation": 0.05993958399248271,
+        "legRotation": 0.06593354239173098,
+        "telegraph": false
+      },
+      "haul": 0,
+      "cache": {
+        "index": 0,
+        "position": {
+          "x": -19,
+          "y": 0,
+          "z": -14.5
+        },
+        "opened": false,
+        "rewardTier": 0,
+        "openAmount": 0
+      }
+    },
+    {
+      "name": "giant-approach",
+      "gameTime": 15.478733333333388,
+      "cameraHeight": 1.62,
+      "playerPosition": [
+        0,
+        0,
+        -3.3998229757362277
+      ],
+      "health": 100,
+      "enemy": {
+        "state": "chase",
+        "position": [
+          0,
+          0,
+          -7.895735481057377
+        ],
+        "health": 160,
+        "armRotation": -0.1174964174208209,
+        "legRotation": -0.129246059162903,
+        "telegraph": false
+      },
+      "haul": 0,
+      "cache": {
+        "index": 0,
+        "position": {
+          "x": -19,
+          "y": 0,
+          "z": -14.5
+        },
+        "opened": false,
+        "rewardTier": 0,
+        "openAmount": 0
+      }
+    },
+    {
+      "name": "giant-windup",
+      "gameTime": 16.062066666666745,
+      "cameraHeight": 1.62,
+      "playerPosition": [
+        0,
+        0,
+        -3.3999999995273
+      ],
+      "health": 100,
+      "enemy": {
+        "state": "windup",
+        "position": [
+          0,
+          0,
+          -6.477402147724047
+        ],
+        "health": 160,
+        "armRotation": -0.2710144927536232,
+        "legRotation": 0,
+        "telegraph": true
+      },
+      "haul": 0,
+      "cache": {
+        "index": 0,
+        "position": {
+          "x": -19,
+          "y": 0,
+          "z": -14.5
+        },
+        "opened": false,
+        "rewardTier": 0,
+        "openAmount": 0
+      }
+    },
+    {
+      "name": "giant-contact",
+      "gameTime": 17.312066666666674,
+      "cameraHeight": 1.62,
+      "playerPosition": [
+        0,
+        0,
+        -3.3999999999999995
+      ],
+      "health": 70,
+      "enemy": {
+        "state": "attack",
+        "position": [
+          0,
+          0,
+          -6.477402147724047
+        ],
+        "health": 160,
+        "armRotation": 0.55,
+        "legRotation": 0,
+        "telegraph": false
+      },
+      "haul": 0,
+      "cache": {
+        "index": 0,
+        "position": {
+          "x": -19,
+          "y": 0,
+          "z": -14.5
+        },
+        "opened": false,
+        "rewardTier": 0,
+        "openAmount": 0
+      }
+    },
+    {
+      "name": "counterstrike",
+      "gameTime": 17.612066666666657,
+      "cameraHeight": 1.62,
+      "playerPosition": [
+        0,
+        0,
+        -5.017866584503984
+      ],
+      "health": 70,
+      "enemy": {
+        "state": "chase",
+        "position": [
+          0,
+          0,
+          -6.41573548105738
+        ],
+        "health": 119,
+        "armRotation": 0,
+        "legRotation": 0,
+        "telegraph": false
+      },
+      "haul": 0,
+      "cache": {
+        "index": 0,
+        "position": {
+          "x": -19,
+          "y": 0,
+          "z": -14.5
+        },
+        "opened": false,
+        "rewardTier": 0,
+        "openAmount": 0
+      }
+    },
+    {
+      "name": "recovery",
+      "gameTime": 18.0287333333333,
+      "cameraHeight": 1.62,
+      "playerPosition": [
+        0,
+        0,
+        -5.079993509285947
+      ],
+      "health": 70,
+      "enemy": {
+        "state": "chase",
+        "position": [
+          0,
+          0,
+          -6.41573548105738
+        ],
+        "health": 119,
+        "armRotation": 0,
+        "legRotation": 0,
+        "telegraph": false
+      },
+      "haul": 0,
+      "cache": {
+        "index": 0,
+        "position": {
+          "x": -19,
+          "y": 0,
+          "z": -14.5
+        },
+        "opened": false,
+        "rewardTier": 0,
+        "openAmount": 0
+      }
+    },
+    {
+      "name": "cache-opening",
+      "gameTime": 19.528733333333214,
+      "cameraHeight": 1.62,
+      "playerPosition": [
+        -16.9,
+        0,
+        -14.5
+      ],
+      "health": 100,
+      "enemy": {
+        "state": "patrol",
+        "position": [
+          1.5570570742978647,
+          0,
+          -63.09690904811342
+        ],
+        "health": 160,
+        "armRotation": -0.005378358534219428,
+        "legRotation": -0.00591619438764137,
+        "telegraph": false
+      },
+      "haul": 10,
+      "cache": {
+        "index": 0,
+        "position": {
+          "x": -19,
+          "y": 0,
+          "z": -14.5
+        },
+        "opened": true,
+        "rewardTier": 0,
+        "openAmount": 0.48658288096740787
+      }
+    },
+    {
+      "name": "cache-open",
+      "gameTime": 20.112066666666514,
+      "cameraHeight": 1.62,
+      "playerPosition": [
+        -16.9,
+        0,
+        -14.5
+      ],
+      "health": 100,
+      "enemy": {
+        "state": "patrol",
+        "position": [
+          2.162579269858154,
+          0,
+          -62.745707011268635
+        ],
+        "health": 160,
+        "armRotation": -0.058495674730918545,
+        "legRotation": -0.06434524220401039,
+        "telegraph": false
+      },
+      "haul": 10,
+      "cache": {
+        "index": 0,
+        "position": {
+          "x": -19,
+          "y": 0,
+          "z": -14.5
+        },
+        "opened": true,
+        "rewardTier": 0,
+        "openAmount": 0.9951720500061687
+      }
+    }
+  ]
+}

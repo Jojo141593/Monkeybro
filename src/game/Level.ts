@@ -1,0 +1,812 @@
+import * as THREE from 'three';
+import { LOW_SPEC } from '../core/Quality';
+import { MaterialLibrary } from '../assets/MaterialLibrary';
+import { buildAncientHall } from '../assets/AncientArchitecture';
+import {
+  buildGrassClump,
+  buildPaifang,
+  buildRockGeometry,
+  buildStoneLantern,
+  buildTreeTemplate,
+  type TreeTemplate,
+} from '../assets/WorldKit';
+import { createSeededRandom } from '../utils/random';
+import { ColliderGrid, PATH_LENGTH, ZONE_STARTS, TRAIL_HALF_WIDTH, TRAIL_TREE_STATIONS, distanceToTrail, pathSlope, pathX, zoneAt } from './LevelPath';
+
+export interface PeachSpot {
+  position: THREE.Vector3;
+  zone: number;
+  /** Guaranteed ancient peach (altar). */
+  special?: number;
+}
+
+export interface InteriorSite {
+  center: THREE.Vector3;
+  rotationY: number;
+  entries: THREE.Vector3[];
+  doorways: THREE.Vector3[];
+  chestApproach: THREE.Vector3;
+  bounds: THREE.Box3;
+}
+
+export type ShrineKind = 'real' | 'bait' | 'dormant';
+
+export interface ShrineSite {
+  index: number;
+  t: number;
+  zone: number;
+  position: THREE.Vector3;
+  rotationY: number;
+  lanterns: THREE.Mesh[];
+  column: THREE.Mesh;
+  ring: THREE.Mesh;
+  /** real = extraction, bait = chargeable lure (no sanctuary, no escape), dormant = unlit. */
+  kind: ShrineKind;
+  /** True for real and bait: lit and chargeable. */
+  active: boolean;
+}
+
+const SHRINE_COLORS: Record<'real' | 'bait', { ring: string; column: THREE.Vector3; light: string }> = {
+  real: { ring: '#7cc4ff', column: new THREE.Vector3(0.4, 0.72, 1.0), light: '#5aa8ff' },
+  bait: { ring: '#ffb04a', column: new THREE.Vector3(1.0, 0.55, 0.22), light: '#ff7a2a' },
+};
+
+const CHUNK = 50;
+
+export function pathPoint(t: number, lateral: number, out = new THREE.Vector3()): THREE.Vector3 {
+  const s = pathSlope(t);
+  const k = 1 / Math.sqrt(1 + s * s);
+  // normal to the tangent (s, -1) in xz is (1, s) normalised
+  out.set(pathX(t) + lateral * k, 0, -t + lateral * s * k);
+  return out;
+}
+
+export function pathYaw(t: number): number {
+  return Math.atan2(pathSlope(t), -1);
+}
+
+export class Level {
+  readonly root = new THREE.Group();
+  readonly colliders = new ColliderGrid();
+  readonly peachSpots: PeachSpot[] = [];
+  readonly shrines: ShrineSite[] = [];
+  readonly chestSites: { position: THREE.Vector3; rotationY: number }[] = [];
+  readonly interiors: InteriorSite[] = [];
+  readonly fireflies: THREE.Points;
+  private readonly fireflyMat: THREE.ShaderMaterial;
+  private readonly skyMat: THREE.ShaderMaterial;
+  readonly sky: THREE.Mesh;
+  private readonly columnMat: THREE.ShaderMaterial;
+  private readonly baitColumnMat: THREE.ShaderMaterial;
+  private readonly ringMats: Record<'real' | 'bait', THREE.MeshBasicMaterial> = {
+    real: new THREE.MeshBasicMaterial({ color: SHRINE_COLORS.real.ring, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }),
+    bait: new THREE.MeshBasicMaterial({ color: SHRINE_COLORS.bait.ring, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }),
+  };
+  private readonly disposables: { dispose(): void }[] = [];
+  /** Two shared cold-blue lights that move to the real shrines this run. */
+  readonly shrineLights = [new THREE.PointLight(SHRINE_COLORS.real.light, 0, 18, 1.5), new THREE.PointLight(SHRINE_COLORS.real.light, 0, 18, 1.5)];
+  /** Bait lure lights (skipped on low-spec to keep the light count down). */
+  readonly baitLights = LOW_SPEC ? [] : [new THREE.PointLight(SHRINE_COLORS.bait.light, 0, 15, 1.6), new THREE.PointLight(SHRINE_COLORS.bait.light, 0, 15, 1.6)];
+
+  private shaftMat: THREE.ShaderMaterial | null = null;
+  private readonly treeBatches: { trunk: THREE.InstancedMesh; canopy: THREE.InstancedMesh; instances: {matrix: THREE.Matrix4; position: THREE.Vector3}[] }[] = [];
+
+  constructor(private readonly mats: MaterialLibrary) {
+    const rng = createSeededRandom(2024);
+    this.buildArchitecture();
+    this.buildGround();
+    const templates = [101, 202, 303, 404, 505].map((s) => buildTreeTemplate(s));
+    for (const t of templates) this.disposables.push(t.trunk, t.canopy);
+    this.columnMat = this.makeColumnMaterial(SHRINE_COLORS.real.column);
+    this.baitColumnMat = this.makeColumnMaterial(SHRINE_COLORS.bait.column);
+    this.disposables.push(this.ringMats.real, this.ringMats.bait);
+    this.buildLandmarks();
+    this.buildTrees(templates, rng);
+    this.buildScatter(rng);
+    this.buildMoonlight(rng);
+    this.sky = this.buildSky();
+    this.skyMat = this.sky.material as THREE.ShaderMaterial;
+    const ff = this.buildFireflies(rng);
+    this.fireflies = ff.points;
+    this.fireflyMat = ff.mat;
+    this.root.add(this.fireflies);
+    for (const l of this.shrineLights) this.root.add(l);
+    for (const l of this.baitLights) this.root.add(l);
+  }
+
+  update(elapsed: number, cameraPos: THREE.Vector3, hunt01: number, sanctuary01 = 0): void {
+    this.fireflyMat.uniforms.uTime.value = elapsed;
+    if (this.shaftMat) {
+      this.shaftMat.uniforms.uTime.value = elapsed;
+      this.shaftMat.uniforms.uHunt.value = hunt01;
+    }
+    this.columnMat.uniforms.uTime.value = elapsed;
+    this.columnMat.uniforms.uBoost.value = sanctuary01;
+    this.baitColumnMat.uniforms.uTime.value = elapsed;
+    // Gold sigil energy on the lures strengthens while the Howler hunts.
+    this.baitColumnMat.uniforms.uBoost.value = hunt01 * 0.6;
+    // At this distance the existing night fog already hides the cut; collision and fruit stay loaded.
+    for (const batch of this.treeBatches) {
+      let count=0;
+      for(const item of batch.instances) {
+        const dx=item.position.x-cameraPos.x,dz=item.position.z-cameraPos.z;
+        if(dx*dx+dz*dz>42*42)continue;
+        batch.trunk.setMatrixAt(count,item.matrix);batch.canopy.setMatrixAt(count,item.matrix);count++;
+      }
+      batch.trunk.count=batch.canopy.count=count;
+      batch.trunk.instanceMatrix.needsUpdate=batch.canopy.instanceMatrix.needsUpdate=true;
+    }
+    this.sky.position.copy(cameraPos);
+    this.skyMat.uniforms.uHunt.value = hunt01;
+    this.shrineLights.forEach((l, i) => {
+      l.intensity = 14 + Math.sin(elapsed * 7.3 + i) * 1.6 + Math.sin(elapsed * 13.1 + i * 2) * 0.8 + sanctuary01 * 10;
+    });
+    this.baitLights.forEach((l, i) => {
+      l.intensity = 11 + hunt01 * 4 + Math.sin(elapsed * 9.1 + i * 3) * 2.2 + Math.sin(elapsed * 17.3 + i) * 1.1;
+    });
+    for (const s of this.shrines) {
+      if (!s.active) continue;
+      const pulse = 1 + Math.sin(elapsed * 2 + s.index) * 0.05;
+      s.ring.scale.set(pulse, pulse, 1);
+    }
+  }
+
+  /** Tag every candidate: listed reals/baits light up, the rest go dormant. Real wins on overlap. */
+  setShrineKinds(reals: number[], baits: number[]): void {
+    for (const s of this.shrines) {
+      s.kind = reals.includes(s.index) ? 'real' : baits.includes(s.index) ? 'bait' : 'dormant';
+      s.active = s.kind !== 'dormant';
+      for (const l of s.lanterns) l.material = s.kind === 'real' ? this.mats.lanternExtract : s.kind === 'bait' ? this.mats.lanternBait : this.mats.lanternDark;
+      s.column.visible = s.active;
+      s.ring.visible = s.active;
+      if (s.kind === 'real') {
+        s.column.material = this.columnMat;
+        s.ring.material = this.ringMats.real;
+      } else if (s.kind === 'bait') {
+        s.column.material = this.baitColumnMat;
+        s.ring.material = this.ringMats.bait;
+      }
+    }
+    const place = (lights: THREE.PointLight[], kind: ShrineKind) => {
+      const sites = this.shrines.filter((s) => s.kind === kind);
+      lights.forEach((l, i) => {
+        const s = sites[i];
+        if (s) l.position.set(s.position.x, 2.2, s.position.z);
+        else l.position.set(0, -50, 0);
+      });
+    };
+    place(this.shrineLights, 'real');
+    place(this.baitLights, 'bait');
+  }
+
+  dispose(): void {
+    this.root.traverse((o) => {
+      if (o instanceof THREE.Mesh || o instanceof THREE.Points || o instanceof THREE.InstancedMesh) o.geometry.dispose();
+    });
+    for (const d of this.disposables) d.dispose();
+    this.fireflyMat.dispose();
+    this.skyMat.dispose();
+    this.columnMat.dispose();
+    this.baitColumnMat.dispose();
+  }
+
+  // ---------------------------------------------------------------- ground
+  private buildGround(): void {
+    const len = PATH_LENGTH + 120;
+    const geo = new THREE.PlaneGeometry(200, len, 60, 120);
+    geo.rotateX(-Math.PI / 2);
+    geo.translate(0, 0, -len / 2 + 50);
+    // gentle undulation outside the corridor, flat inside (collision is flat)
+    const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+    const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      const lat = this.insideArchitecture(x, z, 2) ? 0 : distanceToTrail(x, z);
+      const edge = THREE.MathUtils.smoothstep(lat, 12, 24);
+      const h = (Math.sin(x * 0.21) * Math.cos(z * 0.17) * 0.9 + Math.sin(x * 0.07 + z * 0.05) * 1.6) * edge;
+      pos.setY(i, h + edge * 0.6);
+      uv.setXY(i, x / 7, z / 7);
+    }
+    geo.computeVertexNormals();
+    const ground = new THREE.Mesh(geo, this.mats.ground);
+    ground.receiveShadow = true;
+    ground.name = 'ground';
+    this.root.add(ground);
+
+  }
+
+  /** Buildings, entrances and side alleys shape navigation without roads or direction markers. */
+  private buildArchitecture(): void {
+    const plans = [
+      { t: 24, side: -1, yaw: 0 },
+      { t: 76, side: 1, yaw: Math.PI / 2 },
+      { t: 146, side: -1, yaw: 0 },
+      { t: 206, side: 1, yaw: Math.PI / 2 },
+      { t: 278, side: -1, yaw: Math.PI / 2 },
+      { t: 336, side: 1, yaw: 0 },
+    ];
+    plans.forEach((plan, i) => {
+      const hall = buildAncientHall(this.mats);
+      // Rotated halls extend 8.5m across the orchard; keep their far door aprons within the walkable boundary.
+      const sideOffset = plan.yaw === 0 ? 5.4 : 2;
+      const center = new THREE.Vector3(pathX(plan.t) + plan.side * sideOffset, 0, -plan.t);
+      hall.root.position.copy(center);
+      hall.root.rotation.y = plan.yaw;
+      hall.root.name = `ancient-hall-${i}`;
+      hall.root.updateMatrixWorld(true);
+      this.root.add(hall.root);
+      for (const material of hall.materials) this.disposables.push(material);
+      const world = (p: THREE.Vector3): THREE.Vector3 => p.clone().applyMatrix4(hall.root.matrixWorld);
+      for (const collider of hall.colliders) {
+        const p = world(new THREE.Vector3(collider.x, 0, collider.z));
+        this.colliders.add({ ...collider, x: p.x, z: p.z });
+      }
+      this.chestSites.push({ position: world(hall.chest), rotationY: plan.yaw });
+      const hx = plan.yaw === 0 ? hall.halfWidth : hall.halfDepth;
+      const hz = plan.yaw === 0 ? hall.halfDepth : hall.halfWidth;
+      this.interiors.push({
+        center, rotationY: plan.yaw,
+        entries: hall.entries.map(world),
+        doorways: [new THREE.Vector3(0, 0, 4), new THREE.Vector3(0, 0, -4)].map(world),
+        chestApproach: world(new THREE.Vector3(0, 0, 0)),
+        bounds: new THREE.Box3(new THREE.Vector3(center.x - hx, -1, center.z - hz), new THREE.Vector3(center.x + hx, 6, center.z + hz)),
+      });
+    });
+  }
+
+  /** A little breathing room outside courtyard doors keeps generated nature out of entrances. */
+  private insideArchitecture(x: number, z: number, margin = 0): boolean {
+    return this.interiors.some(({ bounds }) => x > bounds.min.x - margin && x < bounds.max.x + margin && z > bounds.min.z - margin && z < bounds.max.z + margin);
+  }
+
+  // ---------------------------------------------------------------- landmarks
+  private buildLandmarks(): void {
+    // Zone gates
+    ZONE_STARTS.forEach((t0, i) => {
+      const t = t0 + (i === 0 ? 4 : 0);
+      const gate = buildPaifang(this.mats, { width: 5.4, height: 4.6, text: '', lanterns: true });
+      const p = pathPoint(t, 0);
+      gate.root.position.copy(p);
+      gate.root.rotation.y = pathYaw(t);
+      for (const l of gate.lanterns) l.material = this.mats.lanternLit;
+      this.root.add(gate.root);
+      gate.root.updateMatrixWorld(true);
+      for (const x of gate.pillarOffsets) {
+        const w = new THREE.Vector3(x, 0, 0).applyMatrix4(gate.root.matrixWorld);
+        this.colliders.add({ x: w.x, z: w.z, r: 0.42 });
+      }
+    });
+
+    // Extraction shrine candidates (2 per zone)
+    const sites = [
+      { t: 62, side: 1 },
+      { t: 108, side: -1 },
+      { t: 168, side: -1 },
+      { t: 228, side: 1 },
+      { t: 298, side: 1 },
+      { t: 352, side: -1 },
+    ];
+    const ringGeo = new THREE.RingGeometry(2.1, 2.5, 48);
+    ringGeo.rotateX(-Math.PI / 2);
+    const colGeo = new THREE.CylinderGeometry(2.0, 2.3, 26, 24, 1, true);
+    colGeo.translate(0, 13, 0);
+    sites.forEach((s, index) => {
+      const pos = pathPoint(s.t, s.side * 6.2);
+      const yaw = pathYaw(s.t) + (s.side > 0 ? Math.PI / 2 : -Math.PI / 2);
+      const gate = buildPaifang(this.mats, { width: 2.8, height: 3.4, text: '', lanterns: true });
+      gate.root.position.copy(pos);
+      gate.root.rotation.y = yaw;
+      this.root.add(gate.root);
+      gate.root.updateMatrixWorld(true);
+      for (const x of gate.pillarOffsets) {
+        const w = new THREE.Vector3(x, 0, 0).applyMatrix4(gate.root.matrixWorld);
+        this.colliders.add({ x: w.x, z: w.z, r: 0.42 });
+      }
+      // stone platform
+      const plat = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 3.0, 0.14, 24), this.mats.stone);
+      plat.position.set(pos.x, 0.07, pos.z);
+      plat.receiveShadow = true;
+      this.root.add(plat);
+      const ring = new THREE.Mesh(ringGeo, this.ringMats.real);
+      ring.position.set(pos.x, 0.16, pos.z);
+      this.root.add(ring);
+      const column = new THREE.Mesh(colGeo, this.columnMat);
+      column.position.set(pos.x, 0.1, pos.z);
+      this.root.add(column);
+      this.shrines.push({ index, t: s.t, zone: zoneAt(s.t), position: pos.clone(), rotationY: yaw, lanterns: gate.lanterns, column, ring, kind: 'dormant', active: false });
+    });
+
+    // Altar of the ten-thousand-year peach at the end of the trail
+    const altarT = PATH_LENGTH - 6;
+    const ap = pathPoint(altarT, 0);
+    const altar = new THREE.Group();
+    const step1 = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.8, 0.3, 8), this.mats.stone);
+    step1.position.y = 0.15;
+    const step2 = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.25, 0.3, 8), this.mats.stone);
+    step2.position.y = 0.45;
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 0.7, 8), this.mats.stone);
+    pillar.position.y = 0.95;
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.3, 0.18, 12), this.mats.gold);
+    bowl.position.y = 1.38;
+    for (const m of [step1, step2, pillar, bowl]) {
+      m.castShadow = true;
+      m.receiveShadow = true;
+      altar.add(m);
+    }
+    altar.position.copy(ap);
+    this.root.add(altar);
+    this.colliders.add({ x: ap.x, z: ap.z, r: 1.0 });
+    this.peachSpots.push({ position: new THREE.Vector3(ap.x, 1.62, ap.z), zone: 2, special: 3 });
+  }
+
+  // ---------------------------------------------------------------- trees
+  private buildTrees(templates: TreeTemplate[], rng: () => number): void {
+    type Placement = { tpl: number; x: number; z: number; s: number; ry: number; chunk: number; peach: boolean };
+    const placements: Placement[] = [];
+    const occupied: { x: number; z: number; r: number }[] = [];
+    const tmp = new THREE.Vector3();
+    const blocked = (x: number, z: number, r: number) => {
+      for (const o of occupied) {
+        const dx = o.x - x;
+        const dz = o.z - z;
+        if (dx * dx + dz * dz < (o.r + r) * (o.r + r)) return true;
+      }
+      return false;
+    };
+    for (const s of this.shrines) occupied.push({ x: s.position.x, z: s.position.z, r: 4.2 });
+    for (const t0 of ZONE_STARTS) {
+      const p = pathPoint(t0 + (t0 === 0 ? 4 : 0), 0);
+      occupied.push({ x: p.x, z: p.z, r: 4.5 });
+    }
+    const altar = pathPoint(PATH_LENGTH - 6, 0);
+    occupied.push({ x: altar.x, z: altar.z, r: 4 });
+    const start = pathPoint(0, 0);
+    occupied.push({ x: start.x, z: start.z + 2, r: 5 });
+
+    // A few old peach trees grow through the footpath; the narrow gaps invite a detour.
+    for (const t of TRAIL_TREE_STATIONS) {
+      const p = pathPoint(t, 0);
+      if (blocked(p.x, p.z, 1.8) || this.insideArchitecture(p.x, p.z, 1.2)) continue;
+      placements.push({ tpl: 0, x: p.x, z: p.z, s: 0.85, ry: rng() * Math.PI * 2, chunk: Math.floor(t / CHUNK), peach: true });
+      occupied.push({ x: p.x, z: p.z, r: 1.8 });
+    }
+
+    // Peach-bearing orchard trees inside the corridor
+    for (let t = 6; t < PATH_LENGTH - 2; t += 3.2 + rng() * 2.2) {
+      for (const side of [-1, 1]) {
+        if (rng() < 0.18) continue;
+        const lat = side * (3.4 + rng() * 6.2);
+        pathPoint(t + (rng() - 0.5) * 2, lat, tmp);
+        if (blocked(tmp.x, tmp.z, 2.4)) continue;
+        occupied.push({ x: tmp.x, z: tmp.z, r: 2.4 });
+        placements.push({ tpl: Math.floor(rng() * templates.length), x: tmp.x, z: tmp.z, s: 0.9 + rng() * 0.25, ry: rng() * Math.PI * 2, chunk: Math.floor(t / CHUNK), peach: true });
+      }
+    }
+    // Dense wall of older, larger trees beyond the corridor
+    for (let t = -40; t < PATH_LENGTH + 40; t += 1.6 + rng() * 1.2) {
+      for (const side of [-1, 1]) {
+        const lat = side * (12 + rng() * 22);
+        pathPoint(t, lat, tmp);
+        if (blocked(tmp.x, tmp.z, 1.8)) continue;
+        occupied.push({ x: tmp.x, z: tmp.z, r: 1.8 });
+        placements.push({ tpl: Math.floor(rng() * templates.length), x: tmp.x, z: tmp.z, s: 1.2 + rng() * 0.7, ry: rng() * Math.PI * 2, chunk: Math.floor(Math.max(0, t) / CHUNK), peach: false });
+      }
+    }
+    // Wall behind the start and beyond the altar
+    for (const tEnd of [-14, PATH_LENGTH + 14]) {
+      for (let lat = -12; lat <= 12; lat += 2.2) {
+        for (let row = 0; row < 3; row++) {
+          pathPoint(tEnd + (tEnd < 0 ? -row * 2.5 : row * 2.5), lat + (rng() - 0.5) * 1.2, tmp);
+          placements.push({ tpl: Math.floor(rng() * templates.length), x: tmp.x, z: tmp.z, s: 1.3 + rng() * 0.5, ry: rng() * Math.PI * 2, chunk: Math.floor(Math.max(0, -tmp.z) / CHUNK), peach: false });
+        }
+      }
+    }
+
+    // Instanced meshes per (chunk, template)
+    const groups = new Map<string, Placement[]>();
+    for (const p of placements) {
+      // Keep forks passable, except for the deliberately placed path trees.
+      if (this.insideArchitecture(p.x, p.z, 1.2)) continue;
+      const trailTree = TRAIL_TREE_STATIONS.some(t => Math.abs(p.z + t) < 0.01 && Math.abs(p.x - pathX(t)) < 0.01);
+      if (!trailTree && distanceToTrail(p.x, p.z) < TRAIL_HALF_WIDTH + 0.65) continue;
+      const key = `${p.chunk}:${p.tpl}`;
+      let list = groups.get(key);
+      if (!list) groups.set(key, (list = []));
+      list.push(p);
+      const tr = templates[p.tpl].trunkRadius * p.s + 0.12;
+      this.colliders.add({ x: p.x, z: p.z, r: tr, sight: true });
+    }
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const sc = new THREE.Vector3();
+    const pos = new THREE.Vector3();
+    for (const [key, list] of groups) {
+      const tpl = templates[Number(key.split(':')[1])];
+      const trunk = new THREE.InstancedMesh(tpl.trunk, this.mats.bark, list.length);
+      const canopy = new THREE.InstancedMesh(tpl.canopy, this.mats.leaves, list.length);
+      const instances: {matrix: THREE.Matrix4;position: THREE.Vector3}[] = [];
+      list.forEach((p, i) => {
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.ry);
+        sc.setScalar(p.s);
+        pos.set(p.x, 0, p.z);
+        m.compose(pos, q, sc);
+        trunk.setMatrixAt(i, m);
+        canopy.setMatrixAt(i, m);
+        instances.push({matrix:m.clone(),position:pos.clone()});
+        if (p.peach) {
+          for (const a of tpl.anchors) {
+            const wp = a.clone().applyMatrix4(m);
+            if (wp.y < 1.2 || wp.y > 2.5) continue;
+            this.peachSpots.push({ position: wp, zone: zoneAt(-p.z) });
+          }
+        }
+      });
+      trunk.castShadow = true;
+      trunk.receiveShadow = true;
+      canopy.castShadow = false;
+      canopy.receiveShadow = true;
+      trunk.computeBoundingSphere();
+      canopy.computeBoundingSphere();
+      trunk.name='orchard-natural-trunks';canopy.name='orchard-natural-canopy';
+      this.treeBatches.push({trunk,canopy,instances});
+      this.root.add(trunk, canopy);
+    }
+  }
+
+  // ---------------------------------------------------------------- scatter
+  private buildScatter(rng: () => number): void {
+    const tmp = new THREE.Vector3();
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
+    const chunks = Math.ceil((PATH_LENGTH + 20) / CHUNK);
+    const grassGeo = buildGrassClump(createSeededRandom(9));
+    const rockGeo = buildRockGeometry(createSeededRandom(19));
+    this.disposables.push(grassGeo, rockGeo);
+    for (let c = 0; c < chunks; c++) {
+      const grassCount = LOW_SPEC ? 48 : 900;
+      const grass = new THREE.InstancedMesh(grassGeo, this.mats.grass, grassCount);
+      for (let i = 0; i < grassCount; i++) {
+        const t = c * CHUNK + rng() * CHUNK - 5;
+        let lat = (rng() - 0.5) * 2 * 16;
+        if (Math.abs(lat) < 2.2) lat = Math.sign(lat || 1) * (2.2 + rng() * 2);
+        pathPoint(t, lat, tmp);
+        q.setFromAxisAngle(up, rng() * Math.PI * 2);
+        const k = this.insideArchitecture(tmp.x, tmp.z, 0.6) ? 0 : 0.7 + rng() * 0.9;
+        s.set(k, k * (0.8 + rng() * 0.6), k);
+        m.compose(tmp, q, s);
+        grass.setMatrixAt(i, m);
+      }
+      grass.computeBoundingSphere();
+      grass.receiveShadow = true;
+      this.root.add(grass);
+
+      const rockCount = LOW_SPEC ? 8 : 26;
+      const rocks = new THREE.InstancedMesh(rockGeo, this.mats.rock, rockCount);
+      let placedRocks = 0;
+      for (let i = 0; i < rockCount; i++) {
+        const t = c * CHUNK + rng() * CHUNK;
+        const lat = (rng() < 0.5 ? -1 : 1) * (2.6 + rng() * 12);
+        pathPoint(t, lat, tmp);
+        if (distanceToTrail(tmp.x, tmp.z) < TRAIL_HALF_WIDTH + 0.8) tmp.x += lat > 0 ? 4 : -4;
+        if (distanceToTrail(tmp.x, tmp.z) < TRAIL_HALF_WIDTH + 0.8 || this.insideArchitecture(tmp.x, tmp.z, 1.0)) continue;
+        tmp.y = -0.05;
+        q.setFromEuler(new THREE.Euler(rng() * 0.4, rng() * 6, rng() * 0.4));
+        const k = 0.4 + rng() * 1.2;
+        s.set(k, k * (0.6 + rng() * 0.6), k);
+        m.compose(tmp, q, s);
+        rocks.setMatrixAt(placedRocks++, m);
+        if (k > 0.9 && Math.abs(lat) < 11) this.colliders.add({ x: tmp.x, z: tmp.z, r: 0.4 * k });
+      }
+      rocks.count = placedRocks;
+      rocks.computeBoundingSphere();
+      rocks.castShadow = true;
+      rocks.receiveShadow = true;
+      this.root.add(rocks);
+    }
+
+    // Stone lanterns lining the trail
+    const { body, glow } = buildStoneLantern();
+    this.disposables.push(body, glow);
+    const lanternSpots: THREE.Vector3[] = [];
+    let side = 1;
+    for (let t = 14; t < PATH_LENGTH - 10; t += 26 + rng() * 10) {
+      const p = pathPoint(t, side * 2.7);
+      side = -side;
+      if (distanceToTrail(p.x, p.z) < TRAIL_HALF_WIDTH + 0.65 || this.insideArchitecture(p.x, p.z, 0.8)) continue;
+      if (this.shrines.some((sh) => sh.position.distanceTo(p) < 4)) continue;
+      lanternSpots.push(p);
+    }
+    const bodies = new THREE.InstancedMesh(body, this.mats.stone, lanternSpots.length);
+    const lit = lanternSpots.filter(() => rng() < 0.55);
+    const glows = new THREE.InstancedMesh(glow, this.mats.stoneLanternGlow, Math.max(1, lit.length));
+    lanternSpots.forEach((p, i) => {
+      q.setFromAxisAngle(up, rng() * 3);
+      s.setScalar(1);
+      m.compose(p, q, s);
+      bodies.setMatrixAt(i, m);
+      this.colliders.add({ x: p.x, z: p.z, r: 0.38 });
+    });
+    lit.forEach((p, i) => {
+      m.compose(p, q.identity(), s.setScalar(1));
+      glows.setMatrixAt(i, m);
+    });
+    glows.count = lit.length;
+    bodies.castShadow = true;
+    bodies.computeBoundingSphere();
+    glows.computeBoundingSphere();
+    this.root.add(bodies, glows);
+
+    // Lantern glow cards on the ground
+    const cardMat = new THREE.MeshBasicMaterial({ map: this.mats.glow, color: '#ff9a4a', transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+    this.disposables.push(cardMat);
+    const cardGeo = new THREE.PlaneGeometry(4, 4);
+    cardGeo.rotateX(-Math.PI / 2);
+    const cards = new THREE.InstancedMesh(cardGeo, cardMat, Math.max(1, lit.length));
+    lit.forEach((p, i) => {
+      m.compose(tmp.set(p.x, 0.03, p.z), q.identity(), s.setScalar(1));
+      cards.setMatrixAt(i, m);
+    });
+    cards.count = lit.length;
+    cards.computeBoundingSphere();
+    this.root.add(cards);
+  }
+
+  // ---------------------------------------------------------------- moonlight
+  /** Moonlight cut into shards by leaves: floor dapple decals + slanted god-ray cards. */
+  private buildMoonlight(rng: () => number): void {
+    const tmp = new THREE.Vector3();
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
+    const card = new THREE.PlaneGeometry(1, 1);
+    card.rotateX(-Math.PI / 2);
+    this.disposables.push(card);
+
+    const moonSpots: THREE.Vector3[] = [];
+    const goldSpots: THREE.Vector3[] = [];
+    for (let t = -6; t < PATH_LENGTH + 6; t += 2.6 + rng() * 2.6) {
+      const lat = (rng() - 0.5) * 9;
+      pathPoint(t, lat, tmp);
+      if (!this.insideArchitecture(tmp.x, tmp.z)) (rng() < 0.22 ? goldSpots : moonSpots).push(tmp.clone());
+    }
+    const place = (spots: THREE.Vector3[], mat: THREE.Material, y: number) => {
+      const mesh = new THREE.InstancedMesh(card, mat, Math.max(1, spots.length));
+      spots.forEach((p, i) => {
+        q.setFromAxisAngle(up, rng() * Math.PI * 2);
+        const k = 3 + rng() * 3.5;
+        s.set(k, 1, k * (0.7 + rng() * 0.5));
+        m.compose(tmp.set(p.x, y, p.z), q, s);
+        mesh.setMatrixAt(i, m);
+      });
+      mesh.count = spots.length;
+      mesh.computeBoundingSphere();
+      mesh.renderOrder = 1;
+      mesh.name = 'moon-dapple';
+      this.root.add(mesh);
+    };
+    place(moonSpots, this.mats.moonShard, 0.035);
+    place(goldSpots, this.mats.goldShard, 0.04);
+
+    // Slanted light shafts (two crossed cards each), leaning toward the moon.
+    const moonDir = new THREE.Vector3(-0.35, 0.55, -0.75).normalize();
+    const a = new THREE.PlaneGeometry(1, 1);
+    a.translate(0, 0.5, 0);
+    const b = a.clone().rotateY(Math.PI / 2);
+    const shaftGeo = new THREE.BufferGeometry();
+    const pa = a.getAttribute('position').array as Float32Array;
+    const pb = b.getAttribute('position').array as Float32Array;
+    const ua = a.getAttribute('uv').array as Float32Array;
+    shaftGeo.setAttribute('position', new THREE.Float32BufferAttribute([...pa, ...pb], 3));
+    shaftGeo.setAttribute('uv', new THREE.Float32BufferAttribute([...ua, ...ua], 2));
+    const ia = Array.from(a.getIndex()!.array as ArrayLike<number>);
+    shaftGeo.setIndex([...ia, ...ia.map((v) => v + 4)]);
+    a.dispose();
+    b.dispose();
+    this.disposables.push(shaftGeo);
+    this.shaftMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+      uniforms: { uTime: { value: 0 }, uHunt: { value: 0 } },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        varying float vFade;
+        varying float vSeed;
+        void main() {
+          vUv = uv;
+          vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
+          vSeed = instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.11;
+          vec4 mv = viewMatrix * wp;
+          float d = -mv.z;
+          vFade = smoothstep(2.5, 7.0, d) * (1.0 - smoothstep(34.0, 58.0, d));
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform float uTime, uHunt;
+        varying vec2 vUv;
+        varying float vFade;
+        varying float vSeed;
+        void main() {
+          float across = sin(vUv.x * 3.14159);
+          across *= across;
+          float along = smoothstep(0.0, 0.08, vUv.y) * pow(1.0 - vUv.y, 1.6);
+          float drift = 0.75 + 0.25 * sin(uTime * 0.6 + vSeed + vUv.y * 5.0);
+          float a = across * along * drift * vFade * 0.025;
+          vec3 col = mix(vec3(0.62, 0.70, 1.0), vec3(1.0, 0.35, 0.3), uHunt * 0.7);
+          gl_FragColor = vec4(col * a, a);
+        }`,
+    });
+    this.disposables.push(this.shaftMat);
+    const shaftSpots: THREE.Vector3[] = [];
+    for (let t = 4; t < PATH_LENGTH; t += (LOW_SPEC ? 22 : 13) + rng() * 8) {
+      pathPoint(t, (rng() - 0.5) * 8, tmp);
+      shaftSpots.push(tmp.clone());
+    }
+    const shafts = new THREE.InstancedMesh(shaftGeo, this.shaftMat, shaftSpots.length);
+    const tilt = new THREE.Quaternion().setFromUnitVectors(up, moonDir);
+    shaftSpots.forEach((p, i) => {
+      const spin = new THREE.Quaternion().setFromAxisAngle(up, rng() * Math.PI);
+      q.copy(tilt).multiply(spin);
+      const w = 1.4 + rng() * 1.6;
+      s.set(w, 13 + rng() * 6, w);
+      m.compose(p, q, s);
+      shafts.setMatrixAt(i, m);
+    });
+    shafts.computeBoundingSphere();
+    shafts.frustumCulled = false;
+    shafts.renderOrder = 5;
+    shafts.name = 'moon-shafts';
+    this.root.add(shafts);
+  }
+
+  // ---------------------------------------------------------------- sky
+  private buildSky(): THREE.Mesh {
+    const mat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+      uniforms: { uHunt: { value: 0 }, uMoonDir: { value: new THREE.Vector3(-0.35, 0.55, -0.75).normalize() } },
+      vertexShader: /* glsl */ `
+        varying vec3 vDir;
+        void main() {
+          vDir = normalize(position);
+          vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          gl_Position = p.xyww;
+        }`,
+      fragmentShader: /* glsl */ `
+        varying vec3 vDir;
+        uniform float uHunt;
+        uniform vec3 uMoonDir;
+        float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        void main() {
+          vec3 d = normalize(vDir);
+          float h = clamp(d.y, -0.2, 1.0);
+          // ink-purple night: violet horizon haze → deep indigo zenith
+          vec3 horizon = vec3(0.06, 0.04, 0.11);
+          vec3 zenith = vec3(0.01, 0.008, 0.035);
+          vec3 col = mix(horizon, zenith, smoothstep(0.0, 0.55, h));
+          float md = dot(d, uMoonDir);
+          // stars (thinned near the moon)
+          vec3 cell = floor(d * 180.0);
+          float s = hash(cell);
+          float star = step(0.9962, s) * smoothstep(0.05, 0.3, h) * (1.0 - smoothstep(0.85, 0.98, md));
+          col += vec3(0.8, 0.85, 1.0) * star * (0.4 + 0.6 * hash(cell + 3.1));
+          // ink-wash cloud bands lit from the moon side
+          float az = atan(d.z, d.x);
+          float band = sin(az * 3.0 + h * 9.0) * 0.5 + sin(az * 7.0 - h * 14.0) * 0.3 + sin(az * 13.0 + h * 4.0) * 0.2;
+          float cloud = smoothstep(0.15, 0.75, band) * smoothstep(0.05, 0.25, h) * (1.0 - smoothstep(0.45, 0.8, h));
+          float lit = pow(max(md, 0.0), 6.0);
+          col = mix(col, vec3(0.03, 0.025, 0.06) + vec3(0.32, 0.30, 0.42) * lit, cloud * 0.7);
+          // moon disc + layered halo
+          col += vec3(1.0, 0.96, 0.86) * smoothstep(0.99925, 0.99955, md) * 2.2;
+          col += vec3(0.32, 0.34, 0.55) * pow(max(md, 0.0), 80.0) * 0.9;
+          col += vec3(0.16, 0.13, 0.30) * pow(max(md, 0.0), 8.0) * 0.5;
+          // distant ink-wash mountain ridges (two layers)
+          float r1 = 0.035 + 0.03 * sin(az * 2.0 + 1.3) + 0.018 * sin(az * 5.0 + 0.4) + 0.008 * sin(az * 17.0);
+          float r2 = 0.012 + 0.02 * sin(az * 3.0 + 2.1) + 0.012 * sin(az * 9.0 + 1.7);
+          float m1 = 1.0 - smoothstep(r1 - 0.004, r1 + 0.004, h);
+          float m2 = 1.0 - smoothstep(r2 - 0.003, r2 + 0.003, h);
+          col = mix(col, vec3(0.045, 0.035, 0.085), m1 * 0.85);
+          col = mix(col, vec3(0.022, 0.02, 0.045), m2);
+          // blood tint during the hunt
+          col = mix(col, col * vec3(2.4, 0.6, 0.5) + vec3(0.03, 0.0, 0.0) * (1.0 - h), uHunt * 0.85);
+          gl_FragColor = vec4(col * 0.12, 1.0);
+          #include <colorspace_fragment>
+        }`,
+    });
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(140, 32, 16), mat);
+    sky.frustumCulled = false;
+    sky.renderOrder = -10;
+    this.root.add(sky);
+    return sky;
+  }
+
+  // ---------------------------------------------------------------- fireflies
+  private buildFireflies(rng: () => number): { points: THREE.Points; mat: THREE.ShaderMaterial } {
+    const count = LOW_SPEC ? 12 : 180;
+    const pos = new Float32Array(count * 3);
+    const phase = new Float32Array(count);
+    const tmp = new THREE.Vector3();
+    for (let i = 0; i < count; i++) {
+      pathPoint(rng() * PATH_LENGTH, (rng() - 0.5) * 24, tmp);
+      pos[i * 3] = tmp.x;
+      pos[i * 3 + 1] = 0.4 + rng() * 3.2;
+      pos[i * 3 + 2] = tmp.z;
+      phase[i] = rng() * 100;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uMap: { value: this.mats.glow } },
+      vertexShader: /* glsl */ `
+        attribute float aPhase;
+        uniform float uTime;
+        varying float vAlpha;
+        void main() {
+          vec3 p = position;
+          float t = uTime * 0.35 + aPhase;
+          p.x += sin(t * 1.3) * 0.8 + sin(t * 0.37) * 1.4;
+          p.y += sin(t * 0.9) * 0.4;
+          p.z += cos(t * 1.1) * 0.8;
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          float blink = smoothstep(0.2, 1.0, sin(uTime * (0.8 + fract(aPhase) * 1.4) + aPhase * 7.0));
+          float dist = -mv.z;
+          vAlpha = blink * smoothstep(38.0, 10.0, dist);
+          gl_PointSize = 70.0 / max(dist, 0.5);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D uMap;
+        varying float vAlpha;
+        void main() {
+          float a = texture2D(uMap, gl_PointCoord).r * vAlpha;
+          gl_FragColor = vec4(vec3(0.75, 1.0, 0.35) * a * 1.6, a);
+        }`,
+    });
+    const points = new THREE.Points(g, mat);
+    points.frustumCulled = false;
+    return { points, mat };
+  }
+
+  private makeColumnMaterial(color: THREE.Vector3): THREE.ShaderMaterial {
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+      uniforms: { uTime: { value: 0 }, uColor: { value: color.clone() }, uBoost: { value: 0 } },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        varying float vY;
+        void main() {
+          vUv = uv;
+          vY = position.y;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform float uTime;
+        uniform vec3 uColor;
+        uniform float uBoost;
+        varying vec2 vUv;
+        varying float vY;
+        void main() {
+          float fade = (1.0 - smoothstep(0.0, 26.0, vY)) * smoothstep(0.0, 1.2, vY);
+          float streak = 0.55 + 0.45 * sin(vUv.x * 40.0 + uTime * 1.5) * sin(vUv.x * 13.0 - uTime * 0.7);
+          float rise = 0.6 + 0.4 * sin(vY * 1.2 - uTime * 3.0);
+          float a = fade * streak * rise * (0.22 + uBoost * 0.28);
+          gl_FragColor = vec4(uColor * a, a);
+        }`,
+    });
+  }
+}

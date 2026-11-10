@@ -1,0 +1,108 @@
+{
+  "url": "http://127.0.0.1:4189/monkeytest/",
+  "mode": "desktop",
+  "state": "courtyard-2",
+  "requestedState": "courtyard-2",
+  "appliedState": "courtyard-2",
+  "runId": "greywall-20261109-r1",
+  "seed": 42,
+  "screenshotPath": "artifacts/greywall-20261109-r1/desktop-courtyard-2.png",
+  "gpu": {
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "vendor": "Google Inc. (Google)",
+    "softwareRendered": true
+  },
+  "result": {
+    "ok": true,
+    "reason": "nonblank",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 720
+    },
+    "drawingBuffer": {
+      "width": 896,
+      "height": 503
+    },
+    "alphaPixels": 4096,
+    "variance": 255,
+    "colorBuckets": 87,
+    "metrics": {
+      "colorBuckets": 161,
+      "colorEntropyBits": 2.67,
+      "edgeDensity": 0.094,
+      "luminance": {
+        "mean": 10.9,
+        "p5": 0,
+        "p95": 40.4,
+        "contrast": 40.4
+      },
+      "dominantColorShare": 0.604,
+      "nonBackgroundShare": 0.396
+    },
+    "renderBudget": {
+      "tier": "desktop",
+      "note": "starting-point budget; adjust per game and document overrides",
+      "rows": [
+        {
+          "metric": "calls",
+          "actual": 480,
+          "limit": 300,
+          "ok": false
+        },
+        {
+          "metric": "triangles",
+          "actual": 780532,
+          "limit": 750000,
+          "ok": false
+        },
+        {
+          "metric": "geometries",
+          "actual": 383,
+          "limit": 300,
+          "ok": false
+        },
+        {
+          "metric": "textures",
+          "actual": 16,
+          "limit": 60,
+          "ok": true
+        }
+      ],
+      "withinBudget": false
+    },
+    "diagnostics": {
+      "frame": 12,
+      "elapsed": 7.4088,
+      "score": 0,
+      "targetScore": 10000,
+      "complete": false,
+      "player": {
+        "position": {
+          "x": 47.25104617068116,
+          "y": 0,
+          "z": -76
+        },
+        "speed": 0
+      },
+      "renderer": {
+        "calls": 480,
+        "triangles": 780532,
+        "geometries": 383,
+        "textures": 16
+      },
+      "canvas": {
+        "clientWidth": 1280,
+        "clientHeight": 720,
+        "width": 896,
+        "height": 503,
+        "dpr": 1
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "consoleErrorCount": 0,
+  "pageErrorCount": 0
+}

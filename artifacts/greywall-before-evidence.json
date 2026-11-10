@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "runId": "greywall-20261109-r1",
+  "captures": [
+    {
+      "mode": "desktop",
+      "state": "title",
+      "report": "artifacts/greywall-20261109-r1/desktop-title.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "orchard",
+      "report": "artifacts/greywall-20261109-r1/desktop-orchard.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "courtyard-2",
+      "report": "artifacts/greywall-20261109-r1/desktop-courtyard-2.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "city-active",
+      "report": "artifacts/greywall-20261109-r1/desktop-city-active.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "city-supply",
+      "report": "artifacts/greywall-20261109-r1/desktop-city-supply.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "city-chest-open",
+      "report": "artifacts/greywall-20261109-r1/desktop-city-chest-open.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "title",
+      "report": "artifacts/greywall-20261109-r1/mobile-title.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "orchard",
+      "report": "artifacts/greywall-20261109-r1/mobile-orchard.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "courtyard-2",
+      "report": "artifacts/greywall-20261109-r1/mobile-courtyard-2.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "city-active",
+      "report": "artifacts/greywall-20261109-r1/mobile-city-active.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "city-supply",
+      "report": "artifacts/greywall-20261109-r1/mobile-city-supply.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "city-chest-open",
+      "report": "artifacts/greywall-20261109-r1/mobile-city-chest-open.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "city-dead",
+      "report": "artifacts/greywall-20261109-r1/desktop-city-dead.json"
+    },
+    {
+      "mode": "desktop",
+      "state": "city-extracted",
+      "report": "artifacts/greywall-20261109-r1/desktop-city-extracted.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "city-dead",
+      "report": "artifacts/greywall-20261109-r1/mobile-city-dead.json"
+    },
+    {
+      "mode": "mobile",
+      "state": "city-extracted",
+      "report": "artifacts/greywall-20261109-r1/mobile-city-extracted.json"
+    }
+  ],
+  "artifacts": [
+    "artifacts/greywall-20261109-r1/motion.json",
+    "artifacts/greywall-20261109-r1/motion-walk.png",
+    "artifacts/greywall-20261109-r1/motion-giant-approach.png",
+    "artifacts/greywall-20261109-r1/motion-giant-windup.png",
+    "artifacts/greywall-20261109-r1/motion-giant-contact.png",
+    "artifacts/greywall-20261109-r1/motion-counterstrike.png",
+    "artifacts/greywall-20261109-r1/motion-recovery.png",
+    "artifacts/greywall-20261109-r1/motion-cache-opening.png",
+    "artifacts/greywall-20261109-r1/motion-cache-open.png"
+  ]
+}

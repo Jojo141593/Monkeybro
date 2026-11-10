@@ -1,0 +1,70 @@
+{
+  "runId": "courtyard-night-20261108-r3",
+  "input": "real keyboard E held; game stepped at 1/60s; render each sample",
+  "samples": [
+    {
+      "name": "closed",
+      "frame": 0,
+      "gameTime": 0,
+      "index": 0,
+      "position": {
+        "x": 9.768902907102163,
+        "y": 0,
+        "z": -24
+      },
+      "opened": false,
+      "rewardTier": 1,
+      "openAmount": 0,
+      "haul": 0,
+      "cameraHeight": 1.62
+    },
+    {
+      "name": "opening",
+      "frame": 86,
+      "gameTime": 1.4333333333333333,
+      "index": 0,
+      "position": {
+        "x": 9.768902907102163,
+        "y": 0,
+        "z": -24
+      },
+      "opened": true,
+      "rewardTier": 1,
+      "openAmount": 0.12482668095705252,
+      "haul": 100,
+      "cameraHeight": 1.62
+    },
+    {
+      "name": "half",
+      "frame": 91,
+      "gameTime": 1.5166666666666666,
+      "index": 0,
+      "position": {
+        "x": 9.768902907102163,
+        "y": 0,
+        "z": -24
+      },
+      "opened": true,
+      "rewardTier": 1,
+      "openAmount": 0.5506710358827783,
+      "haul": 100,
+      "cameraHeight": 1.62
+    },
+    {
+      "name": "open",
+      "frame": 125,
+      "gameTime": 2.0833333333333335,
+      "index": 0,
+      "position": {
+        "x": 9.768902907102163,
+        "y": 0,
+        "z": -24
+      },
+      "opened": true,
+      "rewardTier": 1,
+      "openAmount": 0.9951720500061687,
+      "haul": 100,
+      "cameraHeight": 1.62
+    }
+  ]
+}

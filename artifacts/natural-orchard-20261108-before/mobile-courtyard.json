@@ -1,0 +1,108 @@
+{
+  "url": "http://127.0.0.1:5188/monkeytest/",
+  "mode": "mobile",
+  "state": "courtyard",
+  "requestedState": "courtyard",
+  "appliedState": "courtyard",
+  "runId": "natural-orchard-20261108-before",
+  "seed": 42,
+  "screenshotPath": "artifacts/natural-orchard-20261108-before/mobile-courtyard.png",
+  "gpu": {
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "vendor": "Google Inc. (Google)",
+    "softwareRendered": true
+  },
+  "result": {
+    "ok": true,
+    "reason": "nonblank",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 664
+    },
+    "drawingBuffer": {
+      "width": 195,
+      "height": 332
+    },
+    "alphaPixels": 4111,
+    "variance": 255,
+    "colorBuckets": 157,
+    "metrics": {
+      "colorBuckets": 252,
+      "colorEntropyBits": 3.96,
+      "edgeDensity": 0.161,
+      "luminance": {
+        "mean": 20.1,
+        "p5": 0.8,
+        "p95": 64.4,
+        "contrast": 63.6
+      },
+      "dominantColorShare": 0.407,
+      "nonBackgroundShare": 0.593
+    },
+    "renderBudget": {
+      "tier": "mobile",
+      "note": "starting-point budget; adjust per game and document overrides",
+      "rows": [
+        {
+          "metric": "calls",
+          "actual": 78,
+          "limit": 150,
+          "ok": true
+        },
+        {
+          "metric": "triangles",
+          "actual": 335304,
+          "limit": 300000,
+          "ok": false
+        },
+        {
+          "metric": "geometries",
+          "actual": 60,
+          "limit": 200,
+          "ok": true
+        },
+        {
+          "metric": "textures",
+          "actual": 10,
+          "limit": 40,
+          "ok": true
+        }
+      ],
+      "withinBudget": false
+    },
+    "diagnostics": {
+      "frame": 13,
+      "elapsed": 2.7095,
+      "score": 0,
+      "targetScore": 10000,
+      "complete": false,
+      "player": {
+        "position": {
+          "x": 11.418902907102163,
+          "y": 0,
+          "z": -14.5
+        },
+        "speed": 0
+      },
+      "renderer": {
+        "calls": 78,
+        "triangles": 335304,
+        "geometries": 60,
+        "textures": 10
+      },
+      "canvas": {
+        "clientWidth": 390,
+        "clientHeight": 664,
+        "width": 195,
+        "height": 332,
+        "dpr": 0.5
+      }
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "consoleErrorCount": 0,
+  "pageErrorCount": 0
+}
